@@ -1,0 +1,128 @@
+rate-meter
+==========
+
+A Clojure library designed to measure rates of activity for things in customizable
+time segments.
+
+Usage
+-----
+
+first you need to define markers, markers are functions that take a joda
+DateTime instance as argument and return a value that represents the time segment
+they measure, for example, if you want to measure all the activity in one minute
+you can use the provided *minute-mark*::
+
+        user=> (require '[marianoguerra.rate-meter :as rm])
+        user=> (require '[clj-time.core :as time])
+        user=> (rm/minute-mark (time/now))
+        "2013-04-05T12:13"
+        user=> (rm/minute-mark (time/plus (time/now) (time/minutes 2)))
+        "2013-04-05T12:15"
+
+if you want to measure activity in something larger than one minute you can use
+the provided *minute-step-mark*::
+
+        user=> (def four-minute-mark (rm/minute-step-mark 4))
+        #'user/four-minute-mark
+        user=> (four-minute-mark (time/now))
+        "2013-04-05T12:12"
+        user=> (time/now)
+        #<DateTime 2013-04-05T12:15:46.842Z>
+        user=> (four-minute-mark (time/plus (time/now) (time/minutes 4)))
+        "2013-04-05T12:20"
+        user=> (four-minute-mark (time/plus (time/now) (time/minutes 2)))
+        "2013-04-05T12:16"
+        user=> (four-minute-mark (time/plus (time/now) (time/minutes 3)))
+        "2013-04-05T12:16"
+        user=> (four-minute-mark (time/plus (time/now) (time/minutes 5)))
+        "2013-04-05T12:20"
+        user=> (four-minute-mark (time/plus (time/now) (time/minutes 7)))
+        "2013-04-05T12:20"
+        user=> (four-minute-mark (time/plus (time/now) (time/minutes 9)))
+        "2013-04-05T12:24"
+
+as you can see the four-minute-mark returns the same value for all the time
+between 4 minutes.
+
+the returned value doesn't have to be a string nor a date, it can be anything you
+want, but the provided functions return dates formatted as strings.
+
+you can create your own markers for some weirder measurements.
+
+after you have the markers you can instantiate a rate-store, that is an object
+that will allow you to mark activity on things and query the rate for a given marker.
+
+let's see an example
+
+first create the markers we will use::
+
+        user=> (def markers {:one-min rm/minute-mark :five-mins (rm/minute-step-mark 5)})
+
+now create a in memory rate store::
+
+        user=> (def rate-store (rm/memory-rate-store markers))
+
+get the rate for some id::
+
+        user=> (rm/rate rate-store "spongebob" :one-min)
+        0
+
+since there was no activity yet we get 0, but we can change it to another default
+value if not found::
+
+        user=> (rm/rate rate-store "spongebob" :one-min :not-found)
+        :not-found
+
+now let's mark some activity::
+
+        user=> (rm/mark rate-store "spongebob")
+
+and get it back::
+
+        user=> (rm/rate rate-store "spongebob" :one-min)
+        1
+
+        user=> (rm/rate rate-store "spongebob" :five-mins)
+        1
+
+let's mark some activity with a value different than one::
+
+        user=> (rm/mark rate-store "spongebob" 6)
+
+and get the results back::
+
+        user=> (rm/rate rate-store "spongebob" :one-min)
+        7
+
+        user=> (rm/rate rate-store "spongebob" :five-mins)
+        7
+
+one minute passes and we mark again::
+
+        user=> (rm/mark rate-store "spongebob" 3)
+
+we query again and the one minute rate was reseted to 0 since the mark changed
+after one minute passed::
+
+        user=> (rm/rate rate-store "spongebob" :one-min)
+        3
+
+but the five minute rate keeps acumulating::
+
+        user=> (rm/rate rate-store "spongebob" :five-mins)
+        10
+
+that's basically all.
+
+Extending
+---------
+
+You can create custom rate-stores by implementing the RateStore protocol, for
+example you could store the rates on redis or something similar.
+
+License
+-------
+
+Copyright © 2013 marianoguerra
+
+Distributed under the Eclipse Public License, the same as Clojure.
